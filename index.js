@@ -10,6 +10,20 @@ const {
   entersState
 } = require("@discordjs/voice");
 
+// --- إضافة سيرفر Express لمنع البوت من النوم على الاستضافات المجانية ---
+const express = require('express');
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+app.get('/', (req, res) => {
+  res.send('Voice Bot is active and running 24/7!');
+});
+
+app.listen(PORT, () => {
+  console.log(`Web server is running on port ${PORT}`);
+});
+// -------------------------------------------------------------
+
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
@@ -41,7 +55,6 @@ async function joinRoom() {
     const guild = channel.guild;
     const member = await guild.members.fetch(client.user.id);
 
-    // إذا البوت موجود بالفعل في الروم، لا نسوي أي شيء
     if (member.voice.channelId === CHANNEL_ID) {
       console.log(`✅ البوت داخل الروم: ${channel.name}`);
       return;
@@ -49,7 +62,6 @@ async function joinRoom() {
 
     console.log(`🔄 محاولة الدخول إلى: ${channel.name}`);
 
-    // تنظيف الاتصال القديم
     if (connection) {
       try {
         connection.destroy();
@@ -84,6 +96,7 @@ async function joinRoom() {
       connection = null;
     }
 
+  } codeCatch => {
   } catch (error) {
     console.log(`❌ خطأ: ${error.message}`);
 
@@ -103,10 +116,8 @@ async function joinRoom() {
 client.once("ready", async () => {
   console.log(`🤖 Logged in as ${client.user.tag}`);
 
-  // أول محاولة
   await joinRoom();
 
-  // محاولة كل 5 ثواني فقط
   setInterval(async () => {
     try {
       const channel = await client.channels.fetch(CHANNEL_ID);
@@ -119,7 +130,6 @@ client.once("ready", async () => {
         client.user.id
       );
 
-      // إذا خرج من الروم
       if (member.voice.channelId !== CHANNEL_ID) {
         console.log("⚠️ البوت خارج الروم — محاولة جديدة بعد 5 ثواني...");
         await joinRoom();
