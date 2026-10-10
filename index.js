@@ -10,7 +10,7 @@ const {
   entersState
 } = require("@discordjs/voice");
 
-// --- إضافة سيرفر Express لمنع البوت من النوم على الاستضافات المجانية ---
+// --- سيرفر Express لمنع البوت من النوم على Render ---
 const express = require('express');
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -22,7 +22,7 @@ app.get('/', (req, res) => {
 app.listen(PORT, () => {
   console.log(`Web server is running on port ${PORT}`);
 });
-// -------------------------------------------------------------
+// ----------------------------------------------------
 
 const client = new Client({
   intents: [
@@ -96,7 +96,6 @@ async function joinRoom() {
       connection = null;
     }
 
-  } codeCatch => {
   } catch (error) {
     console.log(`❌ خطأ: ${error.message}`);
 
