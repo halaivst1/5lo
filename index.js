@@ -142,3 +142,9 @@ client.once("ready", async () => {
 });
 
 client.login(TOKEN);
+// أضف هذا السطر لكي يتجاهل البوت أخطاء الاتصال المؤقتة ولا يتوقف عن العمل
+if (connection) {
+  connection.on('error', (error) => {
+    console.log(`⚠️ خطأ في الاتصال الصوتي وتم تجاوزه: ${error.message}`);
+  });
+}
