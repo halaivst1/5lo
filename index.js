@@ -213,7 +213,11 @@ if (!TOKEN || !CHANNEL_ID) {
   console.error("❌ Missing DISCORD_TOKEN or VOICE_CHANNEL_ID");
   process.exit(1);
 }
+console.log("🔄 Attempting Discord login...");
 
+client.on("debug", (message) => {
+  console.log("🔍 Discord:", message);
+});
 client.login(TOKEN).catch((error) => {
   console.error(`❌ Discord login failed: ${error.message}`);
   process.exit(1);
