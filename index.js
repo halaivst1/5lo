@@ -1,3 +1,4 @@
+
 const {
   Client,
   GatewayIntentBits,
@@ -6,23 +7,31 @@ const {
 
 const {
   joinVoiceChannel,
+  getVoiceConnection,
   VoiceConnectionStatus,
   entersState
 } = require("@discordjs/voice");
 
-// --- سيرفر Express لمنع البوت من النوم على Render ---
-const express = require('express');
+const express = require("express");
+
+// ========================================
+// EXPRESS SERVER
+// ========================================
+
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-app.get('/', (req, res) => {
-  res.send('Voice Bot is active and running 24/7!');
+app.get("/", (req, res) => {
+  res.status(200).send("Discord Voice Bot is running!");
 });
 
-app.listen(PORT, () => {
-  console.log(`Web server is running on port ${PORT}`);
+app.listen(PORT, "0.0.0.0", () => {
+  console.log(`🌐 Web server running on port ${PORT}`);
 });
-// ----------------------------------------------------
+
+// ========================================
+// DISCORD CLIENT
+// ========================================
 
 const client = new Client({
   intents: [
@@ -38,9 +47,14 @@ const RETRY_DELAY = 5000;
 
 let connection = null;
 let isConnecting = false;
+let checkRunning = false;
+
+// ========================================
+// JOIN VOICE CHANNEL
+// ========================================
 
 async function joinRoom() {
-  if (isConnecting) return;
+  if (isConnecting || !client.isReady()) return;
 
   isConnecting = true;
 
@@ -48,28 +62,34 @@ async function joinRoom() {
     const channel = await client.channels.fetch(CHANNEL_ID);
 
     if (!channel || channel.type !== ChannelType.GuildVoice) {
-      console.log("❌ الروم غير موجود أو الـID خطأ.");
+      console.log("❌ Voice channel not found or invalid ID");
       return;
     }
 
     const guild = channel.guild;
+
     const member = await guild.members.fetch(client.user.id);
 
-    if (member.voice.channelId === CHANNEL_ID) {
-      console.log(`✅ البوت داخل الروم: ${channel.name}`);
+    const existingConnection = getVoiceConnection(guild.id);
+
+    if (
+      member.voice.channelId === CHANNEL_ID &&
+      existingConnection &&
+      existingConnection.state.status === VoiceConnectionStatus.Ready
+    ) {
+      connection = existingConnection;
       return;
     }
 
-    console.log(`🔄 محاولة الدخول إلى: ${channel.name}`);
+    console.log(`🔄 Connecting to: ${channel.name}`);
 
-    if (connection) {
-      try {
-        connection.destroy();
-      } catch {}
-      connection = null;
+    if (existingConnection) {
+      existingConnection.destroy();
     }
 
-    connection = joinVoiceChannel({
+    connection = null;
+
+    const newConnection = joinVoiceChannel({
       channelId: channel.id,
       guildId: guild.id,
       adapterCreator: guild.voiceAdapterCreator,
@@ -77,73 +97,124 @@ async function joinRoom() {
       selfMute: true
     });
 
+    connection = newConnection;
+
+    // Voice connection errors
+    newConnection.on("error", (error) => {
+      console.error(`⚠️ Voice error: ${error.message}`);
+    });
+
+    newConnection.on(VoiceConnectionStatus.Disconnected, () => {
+      console.log("⚠️ Voice connection disconnected");
+    });
+
     try {
       await entersState(
-        connection,
+        newConnection,
         VoiceConnectionStatus.Ready,
-        10000
+        15000
       );
 
-      console.log(`✅ دخل الروم بنجاح: ${channel.name}`);
+      console.log(`✅ Successfully joined: ${channel.name}`);
 
     } catch (error) {
-      console.log(`❌ الاتصال الصوتي فشل: ${error.message}`);
+      console.error(`❌ Voice connection failed: ${error.message}`);
 
-      try {
-        connection.destroy();
-      } catch {}
+      if (newConnection.state.status !== VoiceConnectionStatus.Destroyed) {
+        newConnection.destroy();
+      }
 
-      connection = null;
+      if (connection === newConnection) {
+        connection = null;
+      }
     }
 
   } catch (error) {
-    console.log(`❌ خطأ: ${error.message}`);
-
-    if (connection) {
-      try {
-        connection.destroy();
-      } catch {}
-
-      connection = null;
-    }
+    console.error(`❌ Join room error: ${error.message}`);
 
   } finally {
     isConnecting = false;
   }
 }
 
-client.once("ready", async () => {
+// ========================================
+// CHECK VOICE CHANNEL EVERY 5 SECONDS
+// ========================================
+
+async function checkVoice() {
+  if (checkRunning || isConnecting || !client.isReady()) return;
+
+  checkRunning = true;
+
+  try {
+    const channel = await client.channels.fetch(CHANNEL_ID);
+
+    if (!channel || channel.type !== ChannelType.GuildVoice) {
+      console.log("❌ Invalid voice channel");
+      return;
+    }
+
+    const member = await channel.guild.members.fetch(client.user.id);
+
+    const currentConnection = getVoiceConnection(channel.guild.id);
+
+    const isInChannel = member.voice.channelId === CHANNEL_ID;
+
+    const isVoiceReady =
+      currentConnection &&
+      currentConnection.state.status === VoiceConnectionStatus.Ready;
+
+    if (!isInChannel || !isVoiceReady) {
+      console.log("⚠️ Bot disconnected. Attempting to reconnect...");
+      await joinRoom();
+    }
+
+  } catch (error) {
+    console.error(`⚠️ Voice check error: ${error.message}`);
+
+  } finally {
+    checkRunning = false;
+  }
+}
+
+// ========================================
+// BOT READY
+// ========================================
+
+client.once("clientReady", async () => {
   console.log(`🤖 Logged in as ${client.user.tag}`);
 
   await joinRoom();
 
-  setInterval(async () => {
-    try {
-      const channel = await client.channels.fetch(CHANNEL_ID);
-
-      if (!channel || channel.type !== ChannelType.GuildVoice) {
-        return;
-      }
-
-      const member = await channel.guild.members.fetch(
-        client.user.id
-      );
-
-      if (member.voice.channelId !== CHANNEL_ID) {
-        console.log("⚠️ البوت خارج الروم — محاولة جديدة بعد 5 ثواني...");
-        await joinRoom();
-      }
-
-    } catch (error) {
-      console.log(`⚠️ فحص الروم: ${error.message}`);
-    }
-
-  }, RETRY_DELAY);
+  setInterval(checkVoice, RETRY_DELAY);
 });
 
-client.login(TOKEN);
-// أضف هذا السطر لكي يتجاهل البوت أخطاء الاتصال المؤقتة ولا يتوقف عن العمل
-if (connection) {
-  connection.on('error', (error) => {
-    console.log(`⚠️ خطأ في الاتصال الصوتي وتم تجاوزه: ${error.message}`);
-  });
+// ========================================
+// ERROR HANDLING
+// ========================================
+
+client.on("error", (error) => {
+  console.error(`⚠️ Discord client error: ${error.message}`);
+});
+
+process.on("unhandledRejection", (error) => {
+  console.error("⚠️ Unhandled rejection:", error);
+});
+
+process.on("uncaughtException", (error) => {
+  console.error("⚠️ Uncaught exception:", error);
+});
+
+// ========================================
+// START BOT
+// ========================================
+
+if (!TOKEN || !CHANNEL_ID) {
+  console.error("❌ Missing DISCORD_TOKEN or VOICE_CHANNEL_ID");
+  process.exit(1);
+}
+
+client.login(TOKEN).catch((error) => {
+  console.error(`❌ Discord login failed: ${error.message}`);
+  process.exit(1);
+});
