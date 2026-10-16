@@ -218,6 +218,14 @@ console.log("🔄 Attempting Discord login...");
 client.on("debug", (message) => {
   console.log("🔍 Discord:", message);
 });
+fetch("https://discord.com/api/v10/gateway")
+  .then(async (response) => {
+    console.log("🌐 Discord API status:", response.status);
+    console.log("🌐 Gateway response:", await response.text());
+  })
+  .catch((error) => {
+    console.error("❌ Discord API connection failed:", error);
+  });
 client.login(TOKEN).catch((error) => {
   console.error(`❌ Discord login failed: ${error.message}`);
   process.exit(1);
